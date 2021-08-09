@@ -1,0 +1,18 @@
+name: replication_shalit
+channels:
+- conda-forge
+- anaconda
+- pytorch
+dependencies:
+- python=3.6
+- pytorch=1.5.0
+- torchvision=0.6
+- tensorboard=2.02
+- tqdm
+- numpy
+- pandas
+- matplotlib
+- jupyterlab
+# ↓ for tqdm etc in jupyter lab
+- ipywidgets
+- jupyterlab-git
