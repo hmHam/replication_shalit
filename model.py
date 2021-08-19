@@ -42,36 +42,37 @@ class CFR(nn.Module):
             nn.ELU(),
         )
 
-        # https://pytorch.org/docs/stable/notes/modules.html
-        # module dict
-        # intervention variable is in {0, 1}
         self.hypothesis = nn.ModuleList([
+            self.hypothesis_control,
             self.hypothesis_treat,
-            self.hypothesis_control
         ])
 
+        self.ouput = nn.Linear(hypothesis_dim, 1)
+    
     def forward(self, x, t):
         '''this is implementation of f(x, t)
         '''
         r = self.representation(x)
+
         if t.dim() == 0:
             return self.hypothesis[t](r)
         # (ミニ)バッチ処理
         B = t.shape[0]
         # 先にoutput用の配列を用意
-        batch_out = torch.zeros((B, self.hypothesis_dim))
+        h_batch = torch.zeros((B, self.hypothesis_dim))
         
         # 処置グループを計算して、batch_outの配列に代入
         treat_batch_idx = torch.where(t == self.TREAT_IDX)
-        h1_batch_out = self.hypothesis_treat(r[treat_batch_idx])
-        batch_out[treat_batch_idx] = h1_batch_out
+        h1_batch = self.hypothesis_treat(r[treat_batch_idx])
+        h_batch[treat_batch_idx] = h1_batch
         
         # 統制グループを計算して、batch_outの配列に代入
         control_batch_idx = torch.where(t == self.CONTROL_IDX)
-        h0_batch_out= self.hypothesis_control(r[control_batch_idx])
-        batch_out[control_batch_idx] = h0_batch_out
-
-        return batch_out
+        h0_batch= self.hypothesis_control(r[control_batch_idx])
+        h_batch[control_batch_idx] = h0_batch
+        # FIXME: outの次元がおかしい。outcomeの空間に合わせる。
+        y_hat_batch = self.ouput(h_batch)
+        return r, y_hat_batch
 
         
         

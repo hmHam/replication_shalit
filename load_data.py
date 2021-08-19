@@ -69,5 +69,6 @@ class IHDP_Dataset(torch.utils.data.Dataset):
         }
     
 
+# TODO: 実装
 def load_JOBS():
     pass
