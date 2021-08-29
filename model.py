@@ -70,9 +70,8 @@ class CFR(nn.Module):
         control_batch_idx = torch.where(t == self.CONTROL_IDX)
         h0_batch= self.hypothesis_control(r[control_batch_idx])
         h_batch[control_batch_idx] = h0_batch
-        # FIXME: outの次元がおかしい。outcomeの空間に合わせる。
-        y_hat_batch = self.ouput(h_batch)
-        return r, y_hat_batch
+        yf_estimate_batch = self.ouput(h_batch)
+        return r, yf_estimate_batch
 
         
         

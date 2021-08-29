@@ -12,22 +12,21 @@ class MMD(torch.nn.Module):
     def __init__(self):
         super().__init__()
         
-    def forward(self, X, Y, sigma=10):
+    def forward(self, x, y, sigma=10):
         # ガウスカーネルを採用する。
         # | x_i - x_j |^2 = x_i^T x_i + x_j^T x_j - 2x_i^T x_j
         # の値を算出する
-        xx, xy, yy = torch.mm(X, X.T), torch.mm(X, Y.T), torch.mm(Y, Y.T)
-        expand_diag_xx = xx.diag().expand_as(xx)
-        expand_diag_yy = yy.diag().expand_as(yy)
-        
-        dxx = expand_diag_xx.T + expand_diag_xx - 2 * xx
-        dxy = expand_diag_xx.T + expand_diag_yy - 2 * xy
-        dyy = expand_diag_yy.T + expand_diag_yy - 2 * yy
-        
+        dx = torch.sum(x**2, axis=1)[:, None]
+        dy = torch.sum(y**2, axis=1)[:, None]
+
+        dxx = dx + dx.T - 2 * torch.mm(x, x.T)
+        dyy = dy + dy.T - 2 * torch.mm(y, y.T)
+        dxy = dx + dy.T - 2 * torch.mm(x, y.T)
+
         XX = torch.exp(-0.5*dxx/sigma)
         XY = torch.exp(-0.5*dxy/sigma)
         YY = torch.exp(-0.5*dyy/sigma)
-        return torch.mean(XX + YY - 2 * XY)
+        return XX.mean() + YY.mean() - 2 * XY.mean()
 
 
 # TODO: Wassersteinをdifferentialbeに実装したい。
