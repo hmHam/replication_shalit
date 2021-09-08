@@ -1,5 +1,5 @@
 # 動機
-This project is for a replicational experiment of [Shalit et al. (2017)](https://arxiv.org/pdf/1606.03976.pdf).
+This project is for a experiment to reproduce the result of [Shalit et al. (2017)](https://arxiv.org/pdf/1606.03976.pdf).
 
 # setup
 At first, add the following in your `~/.bashrc`.
