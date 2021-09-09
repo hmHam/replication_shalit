@@ -2,6 +2,7 @@
 '''
 import numpy as np
 import torch
+import os
 
 class DataInterface(object):
     KEY_X = 'x'
@@ -14,55 +15,77 @@ class DataInterface(object):
 
 
 class ArtificialData(DataInterface, torch.utils.data.Dataset):
-    '''
-    mode)
-      0 -> 特徴量1dim, 全ての個体に対して介入後は定数の効果
-      1 -> 特徴量1dim, 特徴量の大きさに対して線形の効果
-      2 -> 特徴量1dim, 特徴量の大きさに対して2次の効果
-    --------------
-      3 -> 特徴量5dim, 全ての個体に対して介入後は定数の効果
-      4 -> 特徴量5dim, 特徴量の大きさに対して線形の効果
-      5 -> 特徴量5dim, 特徴量の大きさに対して2次の効果
-    '''
     def __init__(self, mode=0, N=100, seed=0):
-        self.N = 100  # データ数
+        '''
+        mode)
+        0 -> 特徴量2dim, 定数の効果 RCT
+        1 -> 特徴量2dim, 定数の効果 セレクションbiasあり
+        '''
+        self.N = N  # データ数
+        self.d = 2  # 共変量の数
         torch.manual_seed(seed)
-        d = 1 if mode in [0, 1, 2] else 5
-        if mode in [0, 3]:
-            generate_func = self.generate_constant_effect
-        elif mode in [1, 4]:
-            generate_func = self.generate_linear_effect
-        else:
-            generate_func =self.generate_quadratic_effect
-        self.x = torch.linspace(0, 1, self.N)[..., None]
-        self.mu0 = torch.randn(self.N)
-        self.mu1 = generate_func(self.x, self.mu0)
-        self.t = torch.randint(0, 2, (self.N,))
-        potential_outcomes = torch.stack([self.mu0, self.mu1], axis=1)
+        np.random.seed(seed)
+        if mode == 0:
+            gen, assign_treatment = self.__generate_constant_effect, self.__rct_assign_treatment
+        elif mode == 1:
+            gen, assign_treatment = self.__generate_constant_effect, self.__bias_assign_treatment
+        self.X = torch.randn(self.N, self.d)
+        self.mu0 = gen(self.X, torch.zeros(self.N))
+        self.mu1 = gen(self.X, torch.ones(self.N))
+        # treatment
+        assign_treatment()
+        self.potential_outcomes = torch.stack([self.mu0, self.mu1], axis=1)
         factual_mask = self.t[..., None]
-        self.yf = torch.gather(potential_outcomes, 1, factual_mask)[:, 0]
+        self.yf = torch.gather(self.potential_outcomes, 1, factual_mask)[:, 0]
         counter_factual_mask = torch.logical_not(factual_mask).type(torch.int64)
-        self.ycf = torch.gather(potential_outcomes, 1, counter_factual_mask)[:, 0]
+        self.ycf = torch.gather(self.potential_outcomes, 1, counter_factual_mask)[:, 0]
         self.u = torch.mean(self.t.float(), axis=0)
         self.w = self.t / (2 * self.u) + (1 - self.t) / (2 * (1 - self.u))
+        self._shape_check()
 
-    def generate_constant_effect(self, x, mu0):
-        return mu0.clone() + 5  # テキトーな定数
+    def _shape_check(self):
+        assert self.X.dim() == 2, f'{self.__class__} wrong with X.dim'
+        assert self.mu0.dim() == 1, f'{self.__class__} wrong with mu0.dim'
+        assert self.mu1.dim() == 1, f'{self.__class__} wrong with mu1.dim'
+        assert self.t.dim() == 1, f'{self.__class__} wrong with t.dim'
+        assert self.yf.dim() == 1, f'{self.__class__} wrong with yf.dim'
+        assert self.ycf.dim() == 1, f'{self.__class__} wrong with ycf.dim'
+        assert self.u.dim() == 0, f'{self.__class__} wrong with u.dim'
+        assert self.w.dim() == 1, f'{self.__class__} wrong with w.dim'
+        print('shape check has been done.')
 
-    def generate_linear_effect(self, x, mu0):
-        # FIXME: 5次元も対応？
-        return mu0.clone() + x[:, 0]
+    def __generate_constant_effect(self, X, t):
+        '''定数の効果を'''
+        return 0.2 * X[:, 0] + 0.5 * X[:, 1] + 0.3 * t
 
-    def generate_quadratic_effect(self, x, mu0):
-        # FIXME: 5次元も対応？
-        return mu0.clone() + 10 * x[:, 0]**2
+    def __rct_assign_treatment(self):
+        self.t = torch.randint(0, 2, (self.N, ))
+
+    def __bias_assign_treatment(self):
+        p = torch.sigmoid(torch.sum(self.X, axis=1))  # propensity_score for treatment
+        propensity_score = torch.stack([1-p, p], axis=1).numpy()
+        tN = []
+        for n in range(self.N):
+            t = np.random.choice([0, 1], p=propensity_score[n])
+            tN.append(t)
+        self.t = torch.tensor(tN)
+
+    def generate_linear_effect(self):
+        '''特徴量に関して線形に効果が増加する構造方程式モデル
+        '''
+        self._shape_check()
+
+    def generate_quadratic_effect(self):
+        '''特徴量に関して2乗で効果が増加する構造方程式モデル
+        '''
+        self._shape_check()
 
     def __len__(self):
         return self.N
 
     def __getitem__(self, idx):
         return {
-            self.KEY_X: self.x[idx],
+            self.KEY_X: self.X[idx],
             self.KEY_T: self.t[idx],
             self.KEY_YF: self.yf[idx],
             self.KEY_YCF: self.ycf[idx],
@@ -93,7 +116,7 @@ class IHDP_Dataset(DataInterface, torch.utils.data.Dataset):
         }
         '''
         path = f'data/ihdp_npci_1-{R}.{"train" if train else "test"}.npz'
-        data = np.load(path, mmap_mode='r')
+        data = np.load(os.path.join(os.path.dirname(__file__), path), mmap_mode='r')
 
         try:
             data = {k: data[k] for k in self.KEYS}
